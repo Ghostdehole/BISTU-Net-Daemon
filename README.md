@@ -55,11 +55,13 @@
 
 🔍 开始探测: cloud.tencent.com
    [DNS] 解析成功 (IPv4 + IPv6) -> 116.196.150.210
-   [HTTP 80]  🟢 正常跳转   | 目标服务器自身跳转 -> https://cloud.tencent.com/[HTTPS 443] 🟢 绝对畅通   | 直连目标服务器 (HTTP 200)
+   [HTTP 80]  🟢 正常跳转   | 目标服务器自身跳转 -> https://cloud.tencent.com/
+   [HTTPS 443] 🟢 绝对畅通   | 直连目标服务器 (HTTP 200)
 
 🔍 开始探测: aliyun.com
    [DNS] 解析成功 (仅 IPv4) -> 106.11.249.99
-   [HTTP 80]  🔴 302拦截  | 网关踢至认证页: http://lan.bistu.edu.cn[HTTPS 443] 🟡 证书劫持   | 证书不匹配，网关 MITM 拦截
+   [HTTP 80]  🔴 302拦截  | 网关踢至认证页: http://lan.bistu.edu.cn
+   [HTTPS 443] 🟡 证书劫持   | 证书不匹配，网关 MITM 拦截
 ```
 *(扫描结果为 `🟢 绝对畅通` 的目标，即可作为搭建免流穿透隧道的 Endpoint。)*
 
@@ -77,7 +79,7 @@
 3. **动态域名嗅探 (Domain Failover)**
    通过捕获网关未登录时的 302 劫持 `Location`，脚本会自动判断当前处于有线 (`lan`) 还是无线 (`wlan`)，实现自动纠错与接口切换，拒绝“对有线发无线包”的假死现象。
 4. **防抢跑与自我愈合 (Resilience Engineering)**
-   针对网关防火墙权限下发的延迟，设计了“认证 -> 等待 6s -> 二次验证”的防欺骗逻辑。遇到欠费等情况采用指数退避算法（Exponential Backoff）休眠，缴费后脚本自动满血复活。
+   针对网关防火墙权限下发的延迟，设计了“认证 -> 等待 6s -> 二次验证”的防欺骗逻辑。遇到欠费等情况采用指数退避算法（Exponential Backoff）休眠，缴费后脚本自动满血复劳。
 
 ###  快速上手 (Quick Start)
 
@@ -97,6 +99,118 @@
 python bistu_drcom_daemon.py
 ```
 *(Windows 用户可将文件后缀改为 `.pyw` 并放入系统启动文件夹，实现开机无感静默自启。)*
+
+---
+
+##  第四部分：OpenWrt / 软路由原生守护套件 (Router Edition)
+
+针对寝室使用 OpenWrt 软路由（如 GL.iNet MT3600BE、x86 软路由等）作为全屋网关的场景，本项目在 `router/` 目录下提供了一套**专为嵌入式环境定制的 POSIX Shell 原生守护套件**。
+
+###  设计亮点与特性
+1. **零外部运行时依赖**：不依赖 Python，基于 OpenWrt 自带的 BusyBox（`ash`、`curl`、`md5sum`）编写，内存占用几乎为零，坚守嵌入式 Flash 存储红线。
+2. **Sing-box / Clash 透明代理穿透**：通过 `--interface` 套接字绑定与 `table main` 路由表嗅探，在网关断网时强制绕过 `sing-tun` 虚拟代理网卡，彻底规避透明代理与认证死锁问题。
+3. **MD5 / 明文双模降级**：优先采用标准 Dr.COM MD5 散列鉴权；若被网关拒绝，自动降级为明文重试。
+4. **防封号截断指数退避**：连续失败 5 次以上触发退避保护（30s ~ 120s），防止欠费或故障时被学校 BRAS 防火墙判定为爆破而拉黑 MAC。
+5. **网关单次逃逸 (Failover)**：认证成功后强制等待 6s 验证策略下发；若仍被拦截，自动翻转有线/无线网关重试。
+6. **OpenWrt Procd 系统级托管**：原生对接系统的 `init.d` 守护树与 `syslog`，支持开机自启与崩溃自愈。
+
+### 组件构成
+* `router/bistu_auth.conf`：独立凭据配置文件（需锁定 `600` 权限）。
+* `router/bistu_auth.sh`：核心认证与状态机执行脚本（部署至 `/usr/bin/`）。
+* `router/bistu-auth`：OpenWrt Procd 系统自启服务脚本（部署至 `/etc/init.d/`）。
+
+---
+
+### 部署与安装指南
+
+将仓库中 `router/` 目录下的文件通过 SCP/SFTP 上传至路由器，或通过 SSH 终端执行以下配置：
+
+#### 1. 安装执行脚本与服务
+```bash
+# 复制脚本并赋予执行权限
+cp router/bistu_auth.sh /usr/bin/bistu_auth.sh
+chmod +x /usr/bin/bistu_auth.sh
+
+cp router/bistu-auth /etc/init.d/bistu-auth
+chmod +x /etc/init.d/bistu-auth
+```
+
+#### 2. 配置认证凭据
+```bash
+cp router/bistu_auth.conf /etc/bistu_auth.conf
+
+# 编辑配置文件填入学号与密码
+vi /etc/bistu_auth.conf
+
+# 强制收紧权限，防止凭据泄露
+chmod 600 /etc/bistu_auth.conf
+```
+
+#### 3. 注册服务并开机自启
+```bash
+# 注册系统开机自启
+/etc/init.d/bistu-auth enable
+
+# 立即启动守护服务
+/etc/init.d/bistu-auth start
+```
+
+---
+
+### CLI 常用诊断命令
+
+安装完成后，你可以在终端中直接执行 `bistu_auth.sh` 进行各种运维诊断：
+
+| 命令 | 说明 | 退出码 (Exit Code) | 适用场景 |
+| :--- | :--- | :--- | :--- |
+| `bistu_auth.sh --status` | **只读探测**网络状态（不发登录请求） | `0`=ONLINE, `10`=NO_INTERFACE, `11`=NOT_CAMPUS, `12`=NEED_LOGIN | 脚本联动、健康检查 |
+| `bistu_auth.sh --status-json` | 输出标准 JSON 格式的网络上下文 | 退出码同上 | 对接 Prometheus / Home Assistant |
+| `bistu_auth.sh --once` | 执行单次检测，未通网则尝试登录 | `0`=成功, `1`=无网卡, `2`=非校网, `3`=登录失败 | 手动测试、故障排查 |
+| `bistu_auth.sh --version` | 打印当前脚本版本信息 | `0` | 版本检查 |
+| `bistu_auth.sh --help` | 显示帮助手册与退出码对照 | `0` | 参数查看 |
+
+---
+
+### 临时启停与日常维护
+
+当需要临时抓包排障、让出账号给其他设备使用，或修改了配置文件后：
+
+```bash
+# 查看当前守护服务状态
+/etc/init.d/bistu-auth status
+
+# 实时查看认证守护日志
+logread -f -e bistu_auth
+
+# 临时停止后台自动登录
+/etc/init.d/bistu-auth stop
+
+# 恢复后台守护进程
+/etc/init.d/bistu-auth start
+
+# 修改 /etc/bistu_auth.conf 后重载服务
+/etc/init.d/bistu-auth restart
+```
+
+---
+
+### 彻底卸载指南
+
+若路由器转让、系统重置或不再需要此功能，执行以下命令即可彻底清理，不留残余：
+
+```bash
+# 1. 禁用开机自启并停止后台服务
+/etc/init.d/bistu-auth disable
+/etc/init.d/bistu-auth stop
+
+# 2. 删除所有关联的业务与服务文件
+rm -f /etc/bistu_auth.conf
+rm -f /usr/bin/bistu_auth.sh
+rm -f /etc/init.d/bistu-auth
+
+# 3. 刷新 OpenWrt RPC 服务树
+/etc/init.d/rpcd reload
+```
 
 ---
 
