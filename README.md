@@ -1,9 +1,5 @@
 #  BISTU Dr.COM ePortal Auto-Daemon & Security Audit
 
-[![License](https://img.shields.io/github/license/Ghostdehole/PBS?color=green)](https://github.com/Ghostdehole/BISTU-Net-Daemon/blob/main/LICENSE)
-![Python](https://img.shields.io/badge/Python-3.7%2B-yellow.svg)
-
-
 本项目针对 **北京信息科技大学 (BISTU)** 的校园网（基于 Dr.COM 计费系统），进行了一次深度的底层架构分析与网络测绘。
 本项目包含了一份关于**无线网络 (WLAN) 防火墙策略漏洞**的详细披露报告，以及一套专为该校复杂网络环境打造的**工业级自动化认证守护进程 (Daemon)**。
 
@@ -79,7 +75,7 @@
 3. **动态域名嗅探 (Domain Failover)**
    通过捕获网关未登录时的 302 劫持 `Location`，脚本会自动判断当前处于有线 (`lan`) 还是无线 (`wlan`)，实现自动纠错与接口切换，拒绝“对有线发无线包”的假死现象。
 4. **防抢跑与自我愈合 (Resilience Engineering)**
-   针对网关防火墙权限下发的延迟，设计了“认证 -> 等待 6s -> 二次验证”的防欺骗逻辑。遇到欠费等情况采用指数退避算法（Exponential Backoff）休眠，缴费后脚本自动满血复劳。
+   针对网关防火墙权限下发的延迟，设计了“认证 -> 等待 6s -> 二次验证”的防欺骗逻辑。遇到欠费等情况采用指数退避算法（Exponential Backoff）休眠，缴费后脚本自动满血复活。
 
 ###  快速上手 (Quick Start)
 
