@@ -1,5 +1,7 @@
 #  BISTU Dr.COM ePortal Auto-Daemon & Security Audit
 
+[在 OpenWrt 路由器上安装校园网守护（Windows 离线安装）](router/README.md)
+
 本项目针对 **北京信息科技大学 (BISTU)** 的校园网（基于 Dr.COM 计费系统），进行了一次深度的底层架构分析与网络测绘。
 本项目包含了一份关于**无线网络 (WLAN) 防火墙策略漏洞**的详细披露报告，以及一套专为该校复杂网络环境打造的**工业级自动化认证守护进程 (Daemon)**。
 
@@ -98,60 +100,11 @@ python bistu_drcom_daemon.py
 
 ---
 
-##  第四部分：OpenWrt / 软路由原生守护套件 (Router Edition)
+## 第四部分：OpenWrt 路由器安装
 
-针对寝室使用 OpenWrt 软路由（如 GL.iNet MT3600BE、x86 软路由等）作为全屋网关的场景，本项目在 `router/` 目录下提供了一套**专为嵌入式环境定制的 POSIX Shell 原生守护套件**。
+Windows 用户可先在电脑下载离线包，解压后双击安装入口；路由器端无需先能访问 GitHub。首次安装在 SSH 终端内录入本人的校园账号，已有配置将保留。
 
-###  设计亮点与特性
-1. **零外部运行时依赖**：不依赖 Python，基于 OpenWrt 自带的 BusyBox（`ash`、`curl`、`md5sum`）编写，内存占用几乎为零，坚守嵌入式 Flash 存储红线。
-2. **Sing-box / Clash 透明代理穿透**：通过 `--interface` 套接字绑定与 `table main` 路由表嗅探，在网关断网时强制绕过 `sing-tun` 虚拟代理网卡，彻底规避透明代理与认证死锁问题。
-3. **MD5 / 明文双模降级**：优先采用标准 Dr.COM MD5 散列鉴权；若被网关拒绝，自动降级为明文重试。
-4. **防封号截断指数退避**：连续失败 5 次以上触发退避保护（30s ~ 120s），防止欠费或故障时被学校 BRAS 防火墙判定为爆破而拉黑 MAC。
-5. **网关单次逃逸 (Failover)**：认证成功后强制等待 6s 验证策略下发；若仍被拦截，自动翻转有线/无线网关重试。
-6. **OpenWrt Procd 系统级托管**：原生对接系统的 `init.d` 守护树与 `syslog`，支持开机自启与崩溃自愈。
-
-### 组件构成
-* `router/bistu_auth.conf`：独立凭据配置文件（需锁定 `600` 权限）。
-* `router/bistu_auth.sh`：核心认证与状态机执行脚本（部署至 `/usr/bin/`）。
-* `router/bistu-auth`：OpenWrt Procd 系统自启服务脚本（部署至 `/etc/init.d/`）。
-
----
-
-### 部署与安装指南
-
-将仓库中 `router/` 目录下的文件通过 SCP/SFTP 上传至路由器，或通过 SSH 终端执行以下配置：
-
-#### 1. 安装执行脚本与服务
-```bash
-# 复制脚本并赋予执行权限
-cp router/bistu_auth.sh /usr/bin/bistu_auth.sh
-chmod +x /usr/bin/bistu_auth.sh
-
-cp router/bistu-auth /etc/init.d/bistu-auth
-chmod +x /etc/init.d/bistu-auth
-```
-
-#### 2. 配置认证凭据
-```bash
-cp router/bistu_auth.conf /etc/bistu_auth.conf
-
-# 编辑配置文件填入学号与密码
-vi /etc/bistu_auth.conf
-
-# 强制收紧权限，防止凭据泄露
-chmod 600 /etc/bistu_auth.conf
-```
-
-#### 3. 注册服务并开机自启
-```bash
-# 注册系统开机自启
-/etc/init.d/bistu-auth enable
-
-# 立即启动守护服务
-/etc/init.d/bistu-auth start
-```
-
----
+[路由器安装指南、离线包及状态检查](router/README.md)
 
 ### CLI 常用诊断命令
 
@@ -159,9 +112,9 @@ chmod 600 /etc/bistu_auth.conf
 
 | 命令 | 说明 | 退出码 (Exit Code) | 适用场景 |
 | :--- | :--- | :--- | :--- |
-| `bistu_auth.sh --status` | **只读探测**网络状态（不发登录请求） | `0`=ONLINE, `10`=NO_INTERFACE, `11`=NOT_CAMPUS, `12`=NEED_LOGIN | 脚本联动、健康检查 |
+| `bistu_auth.sh --status` | **只读探测**网络状态（不发登录请求） | `0`=ONLINE, `10`=NO_INTERFACE, `11`=NOT_CAMPUS, `12`=NEED_LOGIN, `13`=INCONCLUSIVE | 脚本联动、健康检查 |
 | `bistu_auth.sh --status-json` | 输出标准 JSON 格式的网络上下文 | 退出码同上 | 对接 Prometheus / Home Assistant |
-| `bistu_auth.sh --once` | 执行单次检测，未通网则尝试登录 | `0`=成功, `1`=无网卡, `2`=非校网, `3`=登录失败 | 手动测试、故障排查 |
+| `bistu_auth.sh --once` | 执行单次检测，新装时仅识别出校方门户才尝试登录 | `0`=成功, `1`=无网卡, `2`=非校网, `3`=登录暂时失败, `4`=探测不确定, `5`=门户拒绝 | 手动测试、故障排查 |
 | `bistu_auth.sh --version` | 打印当前脚本版本信息 | `0` | 版本检查 |
 | `bistu_auth.sh --help` | 显示帮助手册与退出码对照 | `0` | 参数查看 |
 
